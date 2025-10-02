@@ -97,7 +97,17 @@ OuterLoop:
 				mysqldumpArgs = append(mysqldumpArgs, r.Opts.Passthrough...)
 			}
 			mysqldumpArgs = append(mysqldumpArgs, mysqlDumpFlags...)
-			dumpCmd := exec.Command("mysqldump", mysqldumpArgs...)
+			// Resolve mysqldump binary from PATH with fallback to mariadb-dump
+			BinaryPath := ""
+			if path, err := exec.LookPath("mysqldump"); err == nil {
+				BinaryPath = path
+			} else if path, err := exec.LookPath("mariadb-dump"); err == nil {
+				BinaryPath = path
+			} else {
+				logging.Error("mymagicdump is a mysqldump/mariadb-dump wrapper tool, cannot find mysqldump or mariadb-dump in PATH.")
+				continue NextTry
+			}
+			dumpCmd := exec.Command(BinaryPath, mysqldumpArgs...)
 			logging.Debug("Executing command: %s", strings.Join(dumpCmd.Args, " "))
 
 			// Exit early if in dry-run mode
