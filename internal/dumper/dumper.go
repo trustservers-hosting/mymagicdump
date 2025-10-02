@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -245,11 +246,49 @@ func constructExcludedTables(connFlags []string, patternsList []string) []string
 
 // Removes the DEFINER clauses from any .sql files generated
 func (r *Runner) removeDefiners() {
+	// Remove `DEFINER=... `
+	definerRe := regexp.MustCompile(`DEFINER=[^\s]+ `)
 	for _, dumpFile := range r.OutputFiles {
-		// Remove DEFINER=... plus the trailing space; apply globally per line
-		cmd := exec.Command("sed", "-i", "s/DEFINER=[^[:space:]]\\+ //g", dumpFile)
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil { logging.Error("Failed to remove DEFINER from %s: %v", dumpFile, err); return }
+		// Read entire file
+		data, err := os.ReadFile(dumpFile)
+		if err != nil {
+			logging.Error("Couldn't remove Definers from %s: Failed to read: %v", dumpFile, err)
+			continue
+		}
+
+		// Replace all occurrences
+		processed := definerRe.ReplaceAll(data, []byte{})
+
+		// If no change, skip rewrite
+		if string(processed) == string(data) {
+			logging.Info("No DEFINER clauses found in %s", dumpFile)
+			continue
+		}
+
+		// Write to a temp file in same dir then atomically rename
+		dir := filepath.Dir(dumpFile)
+		tmp, err := os.CreateTemp(dir, filepath.Base(dumpFile)+".nodefiner-*")
+		if err != nil {
+			logging.Error("Failed to create temp file for %s: %v", dumpFile, err)
+			return
+		}
+		tmpPath := tmp.Name()
+		if _, err := tmp.Write(processed); err != nil {
+			tmp.Close()
+			os.Remove(tmpPath)
+			logging.Error("Failed to write temp file for %s: %v", dumpFile, err)
+			return
+		}
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpPath)
+			logging.Error("Failed to close temp file for %s: %v", dumpFile, err)
+			return
+		}
+		if err := os.Rename(tmpPath, dumpFile); err != nil {
+			os.Remove(tmpPath)
+			logging.Error("Failed to replace original file %s: %v", dumpFile, err)
+			return
+		}
 		logging.Info("Successfully removed DEFINER clauses from %s", dumpFile)
 	}
 	logging.Info("DEFINER clauses removal process completed.")
