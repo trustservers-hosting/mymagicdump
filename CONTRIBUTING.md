@@ -41,7 +41,25 @@ make tag-push
 ```
 
 ### Versioning and releases
-Version metadata is embedded at build time via `-ldflags` (see `Makefile`). Release tags follow `vMAJOR.MINOR.PATCH`.
+This project uses GoReleaser to create multi-platform archives in `dist/`.
+
+Local snapshot (no publish):
+
+```
+make snapshot
+```
+
+Tagged release (publishes assets to GitHub Releases):
+
+1) Ensure you have a tag like `v1.2.3` pushed to origin.
+2) Export a `GITHUB_TOKEN` with `repo` scope.
+3) Run:
+
+```
+make release
+```
+
+If you don't have GoReleaser installed, see: https://goreleaser.com/install/
 
 ### License and contributions
 By contributing, you agree that your contributions will be licensed under the project’s GPL-3.0-or-later license. See [LICENSE](./LICENSE) for details.

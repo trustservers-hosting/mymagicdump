@@ -18,7 +18,7 @@
 #	You should have received a copy of the GNU General Public License
 #	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-.PHONY: help build version clean tag tag-push
+.PHONY: help build version clean tag tag-push release snapshot
 
 BINARY := mymagicdump
 PKG := ./cmd/mymagicdump
@@ -35,6 +35,8 @@ help:
 	@echo "Common targets:"
 	@echo "  make build                                 # Build $(BINARY) with version metadata from git"
 	@echo "  make version                               # Print embedded version"
+	@echo "  make snapshot                              # GoReleaser snapshot build into ./dist"
+	@echo "  make release                               # GoReleaser release (needs GITHUB_TOKEN)"
 	@echo "  make tag VERSION=v1.2.0 MESSAGE='Release'  # Create git tag"
 	@echo "  make tag-push                              # Push tags"
 	@echo "  make clean                                 # Remove binary"
@@ -57,3 +59,13 @@ tag:
 
 tag-push:
 	git push --tags
+
+# GoReleaser targets
+snapshot:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "Please install goreleaser: https://goreleaser.com/install/"; exit 1; }
+	goreleaser release --snapshot --clean
+
+release:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "Please install goreleaser: https://goreleaser.com/install/"; exit 1; }
+	@if [ -z "$$GITHUB_TOKEN" ]; then echo "GITHUB_TOKEN not set; export a token with repo access"; exit 1; fi
+	goreleaser release --clean
