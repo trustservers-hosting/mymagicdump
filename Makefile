@@ -22,7 +22,7 @@
 
 BINARY := mymagicdump
 PKG := ./cmd/mymagicdump
-VERSION_PKG := mymagicdump/internal/version
+VERSION_PKG := github.com/trustservers-hosting/mymagicdump/internal/version
 
 # Derive values from git when available
 VER ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
@@ -68,4 +68,9 @@ snapshot:
 release:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "Please install goreleaser: https://goreleaser.com/install/"; exit 1; }
 	@if [ -z "$$GITHUB_TOKEN" ]; then echo "GITHUB_TOKEN not set; export a token with repo access"; exit 1; fi
+	@# Ensure HEAD is exactly at a tag before releasing
+	@if ! git describe --tags --exact-match >/dev/null 2>&1; then \
+		echo "ERROR: HEAD is not at a tag. Run: make tag VERSION=vX.Y.Z && make tag-push"; \
+		exit 1; \
+	fi
 	goreleaser release --clean

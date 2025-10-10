@@ -20,9 +20,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X 'mymagicdump/internal/version.Version={{ .Tag }}'
-      - -X 'mymagicdump/internal/version.Commit={{ .ShortCommit }}'
-      - -X 'mymagicdump/internal/version.Date={{ .Date }}'
+      - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Version={{ .Tag }}'
+      - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Commit={{ .ShortCommit }}'
+      - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Date={{ .Date }}'
 
 archives:
   - formats: [tar.gz]

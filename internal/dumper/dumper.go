@@ -35,10 +35,10 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 
-	"mymagicdump/internal/compress"
-	"mymagicdump/internal/config"
-	"mymagicdump/internal/logging"
-	"mymagicdump/internal/mysqlutil"
+	"github.com/trustservers-hosting/mymagicdump/internal/compress"
+	"github.com/trustservers-hosting/mymagicdump/internal/config"
+	"github.com/trustservers-hosting/mymagicdump/internal/logging"
+	"github.com/trustservers-hosting/mymagicdump/internal/mysqlutil"
 )
 
 type Runner struct {

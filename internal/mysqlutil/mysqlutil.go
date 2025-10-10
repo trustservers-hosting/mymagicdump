@@ -29,8 +29,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"mymagicdump/internal/config"
-	"mymagicdump/internal/logging"
+	"github.com/trustservers-hosting/mymagicdump/internal/config"
+	"github.com/trustservers-hosting/mymagicdump/internal/logging"
 )
 
 // buildConnectionFlags creates the flags for connecting to the MySQL instance.

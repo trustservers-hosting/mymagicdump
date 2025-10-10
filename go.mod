@@ -1,4 +1,4 @@
-module mymagicdump
+module github.com/trustservers-hosting/mymagicdump
 
 go 1.22.7
 

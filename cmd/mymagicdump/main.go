@@ -27,10 +27,10 @@ import (
 	"fmt"
 	"os"
 
-	"mymagicdump/internal/config"
-	"mymagicdump/internal/dumper"
-	"mymagicdump/internal/logging"
-	"mymagicdump/internal/version"
+	"github.com/trustservers-hosting/mymagicdump/internal/config"
+	"github.com/trustservers-hosting/mymagicdump/internal/dumper"
+	"github.com/trustservers-hosting/mymagicdump/internal/logging"
+	"github.com/trustservers-hosting/mymagicdump/internal/version"
 )
 
 func main() {

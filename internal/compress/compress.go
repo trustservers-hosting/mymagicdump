@@ -31,7 +31,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"mymagicdump/internal/logging"
+	"github.com/trustservers-hosting/mymagicdump/internal/logging"
 
 	"github.com/dsnet/compress/bzip2"
 )
