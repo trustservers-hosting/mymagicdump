@@ -23,6 +23,10 @@
 
 package version
 
+import (
+	"runtime/debug"
+)
+
 var (
     // Version is the semantic version, set via -ldflags at build time
     Version = "dev"
@@ -31,6 +35,30 @@ var (
     // Date is the build date/time in ISO 8601, set via -ldflags
     Date = ""
 )
+
+// init provides a best-effort fallback for embedding version information when
+// building without -ldflags (e.g., `go install` or `go build` outside of Goreleaser).
+//
+// It reads Go's build info to populate Version, Commit, and Date if they were
+// not set by -ldflags. When building from a module version (e.g., `@v1.2.3`),
+// info.Main.Version will contain the semver. When building from a local checkout,
+// it will usually be "(devel)" and we keep the default values.
+func init() {
+    // If ldflags already provided a concrete version (not dev/devel), do nothing.
+    if Version != "" && Version != "dev" && Version != "(devel)" {
+        return
+    }
+
+    info, ok := debug.ReadBuildInfo()
+    if !ok || info == nil {
+        return
+    }
+
+    // Module semantic version, if available (e.g., v1.0.0 or a pseudo-version)
+    if info.Main.Version != "" && info.Main.Version != "(devel)" {
+        Version = info.Main.Version
+    }
+}
 
 func String() string {
     s := Version

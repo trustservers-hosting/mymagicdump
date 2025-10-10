@@ -21,8 +21,6 @@ builds:
     ldflags:
       - -s -w
       - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Version={{ .Tag }}'
-      - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Commit={{ .ShortCommit }}'
-      - -X 'github.com/trustservers-hosting/mymagicdump/internal/version.Date={{ .Date }}'
 
 archives:
   - formats: [tar.gz]
