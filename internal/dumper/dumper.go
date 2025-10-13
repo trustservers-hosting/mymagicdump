@@ -79,7 +79,6 @@ func (r *Runner) Run() error {
 	if r.Opts.DryRun {
 		logging.Info("Dry-run mode enabled. No commands will be executed.")
 	}
-OuterLoop:
 	for _, mysqlDumpFlags := range r.DumpFlagsList {
 		targetDatabases := mysqlutil.ExtractDatabasesFromFlags(mysqlDumpFlags)
 		dbSize, err := mysqlutil.CalculateDatabaseSize(r.ConnFlags, targetDatabases)
@@ -89,91 +88,10 @@ OuterLoop:
 			logging.Info("Estimated database size: %d bytes", dbSize)
 		}
 		logging.Info("Starting backup for databases: %s", strings.Join(targetDatabases, ", "))
-	NextTry:
-		for i := 0; i <= r.Opts.Retries; i++ {
-			logging.Info("Attempt %d/%d for dumping database(s)", i+1, r.Opts.Retries+1)
 
-			// Prepare the dump command, appending any passthrough flags
-			mysqldumpArgs := append([]string{}, r.ConnFlags...)
-			if len(r.Opts.Passthrough) > 0 {
-				mysqldumpArgs = append(mysqldumpArgs, r.Opts.Passthrough...)
-			}
-			mysqldumpArgs = append(mysqldumpArgs, mysqlDumpFlags...)
-			// Resolve mysqldump binary from PATH with fallback to mariadb-dump
-			BinaryPath := ""
-			if path, err := exec.LookPath("mysqldump"); err == nil {
-				BinaryPath = path
-			} else if path, err := exec.LookPath("mariadb-dump"); err == nil {
-				BinaryPath = path
-			} else {
-				logging.Error("mymagicdump is a mysqldump/mariadb-dump wrapper tool, cannot find mysqldump or mariadb-dump in PATH.")
-				continue NextTry
-			}
-			dumpCmd := exec.Command(BinaryPath, mysqldumpArgs...)
-			logging.Debug("Executing command: %s", strings.Join(dumpCmd.Args, " "))
-
-			// Exit early if in dry-run mode
-			if r.Opts.DryRun {
-				continue OuterLoop
-			}
-
-			// Create output file
-			os.MkdirAll(r.Opts.OutputPath, os.ModePerm)
-			outputFilePath := filepath.Join(r.Opts.OutputPath, outputNameFromFlags(r.Opts, mysqlDumpFlags))
-			outf, err := os.Create(outputFilePath)
-			if err != nil {
-				logging.Error("Failed to create output file %s: %v", outputFilePath, err)
-				continue NextTry
-			}
-			defer outf.Close()
-
-			// Set output and error streams for the command
-			dumpCmd.Stdout = outf
-			dumpCmd.Stderr = os.Stderr
-
-			// Start and wait for the command to complete
-			startTime := time.Now()
-			if err = dumpCmd.Start(); err != nil {
-				logging.Error("Failed to start mysqldump: %v", err)
-				continue NextTry
-			}
-			logging.Info("Dump process started...")
-
-			// Use a channel to detect when `mysqldump` completes
-			done := make(chan error, 1)
-			go func() { done <- dumpCmd.Wait() }()
-
-			// Create a progress bar
-			var bar *progressbar.ProgressBar
-			if !r.Opts.Silent {
-				bar = progressbar.DefaultBytes(int64(dbSize), "Dumping database...")
-			}
-
-			// Monitor file size and update progress bar
-			for {
-				select {
-				case err := <-done:
-					if exiterr, ok := err.(*exec.ExitError); ok {
-						logging.Error("mysqldump exited with status %d.", exiterr.ExitCode())
-						continue NextTry
-					}
-					elapsed := time.Since(startTime)
-					// Mark success and record output
-					r.OutputFiles = append(r.OutputFiles, outputFilePath)
-					if bar != nil {
-						bar.Finish()
-					}
-					logging.Info("Dump completed successfully in %s", elapsed)
-					continue OuterLoop
-				default:
-					if fi, err := os.Stat(outputFilePath); err == nil && bar != nil {
-						bar.Set64(fi.Size())
-					}
-					time.Sleep(time.Second)
-				}
-			}
+		if err := r.dumpWithRetries(mysqlDumpFlags, int64(dbSize)); err != nil {
+			logging.Error("Backup failed after all retries.")
 		}
-		logging.Error("Backup failed after all retries.")
 	}
 	// post-process
 	if r.Opts.DryRun {
@@ -186,6 +104,131 @@ OuterLoop:
 	prefix := compressionPrefix(r.Opts, r.OutputFiles)
 	compress.ApplyCompression(prefix, r.Opts.Compression, r.OutputFiles)
 	return nil
+}
+
+// dumpWithRetries runs a single dump command with retries.
+func (r *Runner) dumpWithRetries(mysqlDumpFlags []string, dbSize int64) error {
+	attempts := r.Opts.Retries + 1
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		logging.Info("Attempt %d/%d for dumping database(s)", i+1, attempts)
+		if err := r.singleDump(mysqlDumpFlags, dbSize); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// singleDump executes one mysqldump/mariadb-dump run and waits for completion with a progress bar.
+func (r *Runner) singleDump(mysqlDumpFlags []string, dbSize int64) error {
+	// Prepare the dump command, appending any passthrough flags
+	mysqldumpArgs := r.buildDumpArgs(mysqlDumpFlags)
+
+	// Resolve mysqldump binary from PATH with fallback to mariadb-dump
+	binaryPath, err := resolveDumpBinary()
+	if err != nil {
+		logging.Error("mymagicdump is a mysqldump/mariadb-dump wrapper tool, cannot find mysqldump or mariadb-dump in PATH.")
+		return err
+	}
+	dumpCmd := exec.Command(binaryPath, mysqldumpArgs...)
+	logging.Debug("Executing command: %s", strings.Join(dumpCmd.Args, " "))
+
+	// Exit early if in dry-run mode
+	if r.Opts.DryRun {
+		return nil
+	}
+
+	// Create output file
+	os.MkdirAll(r.Opts.OutputPath, os.ModePerm)
+	outputFilePath := filepath.Join(r.Opts.OutputPath, outputNameFromFlags(r.Opts, mysqlDumpFlags))
+	outf, err := os.Create(outputFilePath)
+	if err != nil {
+		logging.Error("Failed to create output file %s: %v", outputFilePath, err)
+		return err
+	}
+	defer outf.Close()
+
+	// Set output and error streams for the command
+	dumpCmd.Stdout = outf
+	dumpCmd.Stderr = os.Stderr
+
+	// Start and wait for the command to complete
+	startTime := time.Now()
+	if err = dumpCmd.Start(); err != nil {
+		logging.Error("Failed to start mysqldump: %v", err)
+		return err
+	}
+	logging.Info("Dump process started...")
+
+	// Use a channel to detect when `mysqldump` completes
+	done := make(chan error, 1)
+	go func() { done <- dumpCmd.Wait() }()
+
+	// Create a progress bar
+	var bar *progressbar.ProgressBar
+	if !r.Opts.Silent {
+		bar = progressbar.DefaultBytes(dbSize, "Dumping database...")
+	}
+
+	// Monitor file size and update progress bar
+	if err := r.monitorDump(done, outputFilePath, bar); err != nil {
+		return err
+	}
+
+	// Mark success and record output
+	elapsed := time.Since(startTime)
+	r.OutputFiles = append(r.OutputFiles, outputFilePath)
+	if bar != nil {
+		bar.Finish()
+	}
+	logging.Info("Dump completed successfully in %s", elapsed)
+	return nil
+}
+
+// buildDumpArgs builds the full mysqldump argument slice from connection, passthrough, and dump flags.
+func (r *Runner) buildDumpArgs(mysqlDumpFlags []string) []string {
+	mysqldumpArgs := append([]string{}, r.ConnFlags...)
+	if len(r.Opts.Passthrough) > 0 {
+		mysqldumpArgs = append(mysqldumpArgs, r.Opts.Passthrough...)
+	}
+	mysqldumpArgs = append(mysqldumpArgs, mysqlDumpFlags...)
+	return mysqldumpArgs
+}
+
+// resolveDumpBinary returns the path to mysqldump or mariadb-dump.
+func resolveDumpBinary() (string, error) {
+	if path, err := exec.LookPath("mysqldump"); err == nil {
+		return path, nil
+	}
+	if path, err := exec.LookPath("mariadb-dump"); err == nil {
+		return path, nil
+	}
+	return "", fmt.Errorf("cannot find mysqldump or mariadb-dump in PATH")
+}
+
+// monitorDump updates the progress bar until the dump command finishes.
+func (r *Runner) monitorDump(done <-chan error, outputFilePath string, bar *progressbar.ProgressBar) error {
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				if exiterr, ok := err.(*exec.ExitError); ok {
+					logging.Error("mysqldump exited with status %d.", exiterr.ExitCode())
+				}
+				return err
+			}
+			return nil
+		default:
+			if bar != nil {
+				if fi, err := os.Stat(outputFilePath); err == nil {
+					bar.Set64(fi.Size())
+				}
+			}
+			time.Sleep(time.Second)
+		}
+	}
 }
 
 func outputNameFromFlags(opts *config.Options, mysqlDumpFlags []string) string {
