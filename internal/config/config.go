@@ -38,32 +38,31 @@ func (d *CommaSeparatedList) UnmarshalFlag(value string) error {
 	return nil
 }
 
-
 type Options struct {
-	User                string              `short:"u" long:"user" description:"MySQL username" value-name:"USER"`
-	Password            string              `short:"p" long:"password" description:"MySQL password" value-name:"PASSWORD"`
-	Host                string              `short:"h" long:"host" description:"MySQL host address" value-name:"HOST"`
-	Port                string              `short:"P" long:"port" description:"MySQL port" value-name:"PORT"`
-	Socket              string              `short:"s" long:"socket" description:"Path to MySQL socket" value-name:"SOCKET"`
-	DefaultsFile        string              `long:"defaults-file" default:"~/.my.cnf" description:"Path to MySQL defaults file" value-name:"FILE"`
-	DefaultsGroupSuffix string              `long:"defaults-group-suffix" description:"Suffix to append to the default group name in the MySQL configuration file"`
-	AllDatabases        bool                `long:"all-databases" description:"Dump all databases"`
-	Databases           CommaSeparatedList  `long:"databases" description:"Comma-separated list of databases to dump. Supports glob patterns (* and ?) per entry." value-name:"DATABASE1,DATABASE2"`
-	SeparateDumps       bool                `long:"separate-dumps" description:"Create separate dump files for each database provided with --databases"`
-	ExcludeTables       CommaSeparatedList  `long:"exclude" description:"Comma-separated list of tables to exclude. Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
-	ExcludeTablesData   CommaSeparatedList  `long:"exclude-data" description:"Comma-separated list of tables to exclude data from (but keep the schema). Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
-	OutputPath          string              `long:"output" default:"./" description:"Output file path" value-name:"PATH"`
-	Compression         string              `long:"compression" default:"none" description:"Compression type (tgz, tbz2, zip, none)" choice:"tgz" choice:"tbz2" choice:"zip" choice:"none"`
-	DryRun              bool                `long:"dry-run" description:"Simulate the dump process"`
-	RemoveDefiners      bool                `long:"remove-definers" description:"Remove definer statements"`
-	Retries             int                 `long:"retries" default:"3" description:"Number of retries on failure" value-name:"NUM_RETRIES"`
-	RetryInterval       int                 `long:"retry-interval" default:"30" description:"Seconds between retries" value-name:"SECONDS"`
-	NotifyEmail         string              `long:"notify" description:"Email to send notifications" value-name:"EMAIL_ADDRESS"`
-	Silent              bool                `short:"q" long:"silent" description:"Only print errors to stderr"`
-	Verbose             bool                `short:"v" long:"verbose" description:"Enable verbose (debug) logging"`
-	ShowVersion         bool                `long:"version" description:"Show version and exit"`
+	User                string             `short:"u" long:"user" description:"MySQL username" value-name:"USER"`
+	Password            string             `short:"p" long:"password" description:"MySQL password" value-name:"PASSWORD"`
+	Host                string             `short:"h" long:"host" description:"MySQL host address" value-name:"HOST"`
+	Port                string             `short:"P" long:"port" description:"MySQL port" value-name:"PORT"`
+	Socket              string             `short:"s" long:"socket" description:"Path to MySQL socket" value-name:"SOCKET"`
+	DefaultsFile        string             `long:"defaults-file" default:"~/.my.cnf" description:"Path to MySQL defaults file" value-name:"FILE"`
+	DefaultsGroupSuffix string             `long:"defaults-group-suffix" description:"Suffix to append to the default group name in the MySQL configuration file"`
+	AllDatabases        bool               `long:"all-databases" description:"Dump all databases"`
+	Databases           CommaSeparatedList `long:"databases" description:"Comma-separated list of databases to dump. Supports glob patterns (* and ?) per entry." value-name:"DATABASE1,DATABASE2"`
+	SeparateDumps       bool               `long:"separate-dumps" description:"Create separate dump files for each database provided with --databases"`
+	ExcludeTables       CommaSeparatedList `long:"exclude" description:"Comma-separated list of tables to exclude. Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
+	ExcludeTablesData   CommaSeparatedList `long:"exclude-data" description:"Comma-separated list of tables to exclude data from (but keep the schema). Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
+	OutputPath          string             `long:"output" default:"./" description:"Output file path" value-name:"PATH"`
+	Compression         string             `long:"compression" default:"none" description:"Compression type (tgz, tbz2, zip, none)" choice:"tgz" choice:"tbz2" choice:"zip" choice:"none"`
+	DryRun              bool               `long:"dry-run" description:"Simulate the dump process"`
+	RemoveDefiners      bool               `long:"remove-definers" description:"Remove definer statements"`
+	Retries             int                `long:"retries" default:"3" description:"Number of retries on failure" value-name:"NUM_RETRIES"`
+	RetryInterval       int                `long:"retry-interval" default:"30" description:"Seconds between retries" value-name:"SECONDS"`
+	NotifyEmail         string             `long:"notify" description:"Email to send notifications" value-name:"EMAIL_ADDRESS"`
+	Silent              bool               `short:"q" long:"silent" description:"Only print errors to stderr"`
+	Verbose             bool               `short:"v" long:"verbose" description:"Enable verbose (debug) logging"`
+	ShowVersion         bool               `long:"version" description:"Show version and exit"`
 	// Passthrough holds any flags/args not recognized by our parser that should be forwarded to mysqldump
-	Passthrough         []string            `no-flag:"true"`
+	Passthrough []string `no-flag:"true"`
 }
 
 func ParseArgs() (*Options, error) {

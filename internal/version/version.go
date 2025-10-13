@@ -28,12 +28,12 @@ import (
 )
 
 var (
-    // Version is the semantic version, set via -ldflags at build time
-    Version = "dev"
-    // Commit is the git commit SHA, set via -ldflags
-    Commit = ""
-    // Date is the build date/time in ISO 8601, set via -ldflags
-    Date = ""
+	// Version is the semantic version, set via -ldflags at build time
+	Version = "dev"
+	// Commit is the git commit SHA, set via -ldflags
+	Commit = ""
+	// Date is the build date/time in ISO 8601, set via -ldflags
+	Date = ""
 )
 
 // init provides a best-effort fallback for embedding version information when
@@ -44,29 +44,29 @@ var (
 // info.Main.Version will contain the semver. When building from a local checkout,
 // it will usually be "(devel)" and we keep the default values.
 func init() {
-    // If ldflags already provided a concrete version (not dev/devel), do nothing.
-    if Version != "" && Version != "dev" && Version != "(devel)" {
-        return
-    }
+	// If ldflags already provided a concrete version (not dev/devel), do nothing.
+	if Version != "" && Version != "dev" && Version != "(devel)" {
+		return
+	}
 
-    info, ok := debug.ReadBuildInfo()
-    if !ok || info == nil {
-        return
-    }
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info == nil {
+		return
+	}
 
-    // Module semantic version, if available (e.g., v1.0.0 or a pseudo-version)
-    if info.Main.Version != "" && info.Main.Version != "(devel)" {
-        Version = info.Main.Version
-    }
+	// Module semantic version, if available (e.g., v1.0.0 or a pseudo-version)
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		Version = info.Main.Version
+	}
 }
 
 func String() string {
-    s := Version
-    if Commit != "" {
-        s += " (" + Commit + ")"
-    }
-    if Date != "" {
-        s += " built " + Date
-    }
-    return s
+	s := Version
+	if Commit != "" {
+		s += " (" + Commit + ")"
+	}
+	if Date != "" {
+		s += " built " + Date
+	}
+	return s
 }

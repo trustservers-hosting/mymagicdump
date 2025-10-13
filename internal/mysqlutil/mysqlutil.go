@@ -36,11 +36,21 @@ import (
 // buildConnectionFlags creates the flags for connecting to the MySQL instance.
 func BuildConnectionFlags(opts config.Options) []string {
 	args := []string{}
-	if opts.User != "" { args = append(args, "-u", opts.User) }
-	if opts.Password != "" { args = append(args, "-p"+opts.Password) }
-	if opts.Host != "" { args = append(args, "-h", opts.Host) }
-	if opts.Port != "" { args = append(args, "-P", opts.Port) }
-	if opts.Socket != "" { args = append(args, "--socket", opts.Socket) }
+	if opts.User != "" {
+		args = append(args, "-u", opts.User)
+	}
+	if opts.Password != "" {
+		args = append(args, "-p"+opts.Password)
+	}
+	if opts.Host != "" {
+		args = append(args, "-h", opts.Host)
+	}
+	if opts.Port != "" {
+		args = append(args, "-P", opts.Port)
+	}
+	if opts.Socket != "" {
+		args = append(args, "--socket", opts.Socket)
+	}
 	if opts.DefaultsFile != "" {
 		expanded := config.ExpandTilde(opts.DefaultsFile)
 		if _, err := os.Stat(expanded); err == nil {
@@ -95,7 +105,9 @@ func ExpandDatabaseList(mysqlConnFlags []string, entries []string) ([]string, er
 	seen := map[string]struct{}{}
 	dedup := make([]string, 0, len(out))
 	for _, d := range out {
-		if _, ok := seen[d]; ok { continue }
+		if _, ok := seen[d]; ok {
+			continue
+		}
 		seen[d] = struct{}{}
 		dedup = append(dedup, d)
 	}
@@ -142,7 +154,9 @@ func ExtractDatabasesFromFlags(mysqlDumpFlags []string) []string {
 			cmd := exec.Command("mysql", "-sNe", "SHOW DATABASES;")
 			output, _ := cmd.CombinedOutput()
 			all := strings.Split(string(output), "\n")
-			if len(all) > 0 { all = all[:len(all)-1] }
+			if len(all) > 0 {
+				all = all[:len(all)-1]
+			}
 			return all
 		}
 	}
@@ -150,12 +164,16 @@ func ExtractDatabasesFromFlags(mysqlDumpFlags []string) []string {
 		if flag == "--databases" {
 			databases := []string{}
 			for _, flag2 := range mysqlDumpFlags[i+1:] {
-				if !strings.HasPrefix(flag2, "--") { databases = append(databases, flag2) }
+				if !strings.HasPrefix(flag2, "--") {
+					databases = append(databases, flag2)
+				}
 			}
 			return databases
 		}
 	}
-	if len(mysqlDumpFlags) > 0 { return []string{mysqlDumpFlags[len(mysqlDumpFlags)-1]} }
+	if len(mysqlDumpFlags) > 0 {
+		return []string{mysqlDumpFlags[len(mysqlDumpFlags)-1]}
+	}
 	return nil
 }
 
@@ -167,9 +185,15 @@ func CalculateDatabaseSize(mysqlConnFlags []string, targetDatabases []string) (i
     `
 	cmd := exec.Command("mysql", append(mysqlConnFlags, []string{"-sNe", query}...)...)
 	output, err := cmd.Output()
-	if err != nil { return 0, fmt.Errorf("failed to execute query: %w", err) }
-	if string(output) == "" { return 0, fmt.Errorf("query returned empty output; check if databases exist") }
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute query: %w", err)
+	}
+	if string(output) == "" {
+		return 0, fmt.Errorf("query returned empty output; check if databases exist")
+	}
 	var sz int
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &sz); err != nil { return 0, fmt.Errorf("failed to convert output to int: %w", err) }
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &sz); err != nil {
+		return 0, fmt.Errorf("failed to convert output to int: %w", err)
+	}
 	return sz, nil
 }

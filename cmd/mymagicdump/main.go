@@ -35,7 +35,9 @@ import (
 
 func main() {
 	opts, err := config.ParseArgs()
-	if err != nil { os.Exit(1) }
+	if err != nil {
+		os.Exit(1)
+	}
 	if opts.ShowVersion {
 		fmt.Fprintf(os.Stdout, "mymagicdump %s\n", version.String())
 		return
@@ -45,8 +47,13 @@ func main() {
 		fmt.Fprintf(os.Stdout, "mymagicdump Version %s\n", version.Version)
 		fmt.Fprintf(os.Stdout, "Copyright (c) 2025 TrustServers PC\n\n")
 	}
-    logging.SetVerbosity(opts.Silent, opts.Verbose)
-    r := dumper.NewRunner(opts)
-    if err := r.Prepare(); err != nil { logging.Error("Prepare failed: %v", err); os.Exit(1) }
-    if err := r.Run(); err != nil { os.Exit(1) }
+	logging.SetVerbosity(opts.Silent, opts.Verbose)
+	r := dumper.NewRunner(opts)
+	if err := r.Prepare(); err != nil {
+		logging.Error("Prepare failed: %v", err)
+		os.Exit(1)
+	}
+	if err := r.Run(); err != nil {
+		os.Exit(1)
+	}
 }

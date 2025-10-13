@@ -58,7 +58,10 @@ func ApplyCompression(outputPrefix string, compressionType string, files []strin
 func compressTgz(outputPrefix string, files []string) {
 	logging.Info("Starting tar.gz compression for: %s", outputPrefix)
 	out, err := os.Create(outputPrefix + ".tar.gz")
-	if err != nil { logging.Error("Failed to create tar.gz file: %v", err); return }
+	if err != nil {
+		logging.Error("Failed to create tar.gz file: %v", err)
+		return
+	}
 	defer out.Close()
 	gz := gzip.NewWriter(out)
 	defer gz.Close()
@@ -66,13 +69,36 @@ func compressTgz(outputPrefix string, files []string) {
 	defer tarw.Close()
 	for _, f := range files {
 		fh, err := os.Open(f)
-		if err != nil { logging.Error("Cannot open %s for compression: %v", f, err); continue }
-		fi, err := fh.Stat(); if err != nil { logging.Error("Stat %s failed: %v", f, err); fh.Close(); continue }
-		hdr, err := tar.FileInfoHeader(fi, fi.Name()); if err != nil { logging.Error("Header for %s failed: %v", f, err); fh.Close(); continue }
-		if err := tarw.WriteHeader(hdr); err != nil { logging.Error("Write header for %s failed: %v", f, err); fh.Close(); continue }
-		if _, err := io.Copy(tarw, fh); err != nil { logging.Error("Copy %s failed: %v", f, err); fh.Close(); continue }
+		if err != nil {
+			logging.Error("Cannot open %s for compression: %v", f, err)
+			continue
+		}
+		fi, err := fh.Stat()
+		if err != nil {
+			logging.Error("Stat %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		hdr, err := tar.FileInfoHeader(fi, fi.Name())
+		if err != nil {
+			logging.Error("Header for %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		if err := tarw.WriteHeader(hdr); err != nil {
+			logging.Error("Write header for %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		if _, err := io.Copy(tarw, fh); err != nil {
+			logging.Error("Copy %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
 		fh.Close()
-		if err := os.Remove(f); err != nil { logging.Warn("Failed to delete original %s after compression: %v", f, err) }
+		if err := os.Remove(f); err != nil {
+			logging.Warn("Failed to delete original %s after compression: %v", f, err)
+		}
 	}
 	logging.Info("tar.gz compression completed successfully.")
 }
@@ -80,17 +106,35 @@ func compressTgz(outputPrefix string, files []string) {
 func compressZip(outputPrefix string, files []string) {
 	logging.Info("Starting zip compression for: %s", outputPrefix)
 	out, err := os.Create(outputPrefix + ".zip")
-	if err != nil { logging.Error("Failed to create zip file: %v", err); return }
+	if err != nil {
+		logging.Error("Failed to create zip file: %v", err)
+		return
+	}
 	defer out.Close()
 	zw := zip.NewWriter(out)
 	defer zw.Close()
 	for _, f := range files {
 		base := filepath.Base(f)
-		fh, err := os.Open(f); if err != nil { logging.Error("Cannot open %s for zip: %v", f, err); continue }
-		w, err := zw.Create(base); if err != nil { logging.Error("Create zip entry %s failed: %v", f, err); fh.Close(); continue }
-		if _, err := io.Copy(w, fh); err != nil { logging.Error("Copy %s failed: %v", f, err); fh.Close(); continue }
+		fh, err := os.Open(f)
+		if err != nil {
+			logging.Error("Cannot open %s for zip: %v", f, err)
+			continue
+		}
+		w, err := zw.Create(base)
+		if err != nil {
+			logging.Error("Create zip entry %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		if _, err := io.Copy(w, fh); err != nil {
+			logging.Error("Copy %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
 		fh.Close()
-		if err := os.Remove(f); err != nil { logging.Warn("Failed to delete original %s after compression: %v", f, err) }
+		if err := os.Remove(f); err != nil {
+			logging.Warn("Failed to delete original %s after compression: %v", f, err)
+		}
 	}
 	logging.Info("Zip compression completed successfully.")
 }
@@ -98,22 +142,51 @@ func compressZip(outputPrefix string, files []string) {
 func compressTbz2(outputPrefix string, files []string) {
 	logging.Info("Starting tar.bz2 compression for: %s", outputPrefix)
 	out, err := os.Create(outputPrefix + ".tar.bz2")
-	if err != nil { logging.Error("Failed to create tar.bz2 file: %v", err); return }
+	if err != nil {
+		logging.Error("Failed to create tar.bz2 file: %v", err)
+		return
+	}
 	defer out.Close()
 	bz, err := bzip2.NewWriter(out, &bzip2.WriterConfig{Level: bzip2.BestCompression})
-	if err != nil { logging.Error("Failed to init bzip2 writer: %v", err); return }
+	if err != nil {
+		logging.Error("Failed to init bzip2 writer: %v", err)
+		return
+	}
 	defer bz.Close()
 	tarw := tar.NewWriter(bz)
 	defer tarw.Close()
 	for _, f := range files {
 		fh, err := os.Open(f)
-		if err != nil { logging.Error("Cannot open %s for compression: %v", f, err); continue }
-		fi, err := fh.Stat(); if err != nil { logging.Error("Stat %s failed: %v", f, err); fh.Close(); continue }
-		hdr, err := tar.FileInfoHeader(fi, fi.Name()); if err != nil { logging.Error("Header for %s failed: %v", f, err); fh.Close(); continue }
-		if err := tarw.WriteHeader(hdr); err != nil { logging.Error("Write header for %s failed: %v", f, err); fh.Close(); continue }
-		if _, err := io.Copy(tarw, fh); err != nil { logging.Error("Copy %s failed: %v", f, err); fh.Close(); continue }
+		if err != nil {
+			logging.Error("Cannot open %s for compression: %v", f, err)
+			continue
+		}
+		fi, err := fh.Stat()
+		if err != nil {
+			logging.Error("Stat %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		hdr, err := tar.FileInfoHeader(fi, fi.Name())
+		if err != nil {
+			logging.Error("Header for %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		if err := tarw.WriteHeader(hdr); err != nil {
+			logging.Error("Write header for %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
+		if _, err := io.Copy(tarw, fh); err != nil {
+			logging.Error("Copy %s failed: %v", f, err)
+			fh.Close()
+			continue
+		}
 		fh.Close()
-		if err := os.Remove(f); err != nil { logging.Warn("Failed to delete original %s after compression: %v", f, err) }
+		if err := os.Remove(f); err != nil {
+			logging.Warn("Failed to delete original %s after compression: %v", f, err)
+		}
 	}
 	logging.Info("tar.bz2 compression completed successfully.")
 }
