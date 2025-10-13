@@ -2,8 +2,10 @@
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Go Version](https://img.shields.io/badge/go-%3E%3D1.20-blue)
+[![Go Report Card](https://goreportcard.com/badge/github.com/trustservers-hosting/mymagicdump)](https://goreportcard.com/report/github.com/trustservers-hosting/mymagicdump)
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Why mymagicdump?](#why-mymagicdump)
 - [Background](#background)
@@ -57,6 +59,7 @@ We needed flexibility and extra goodies derived from real-world everyday scenari
 ### Using Pre-built Binaries
 
 Download the latest binary for your operating system from the [Releases page](https://github.com/trustservers-hosting/mymagicdump/releases).
+
 ```bash
 # Make executable and install to system PATH
 chmod +x mymagicdump
@@ -270,6 +273,7 @@ Any additional flags not recognized by `mymagicdump` are forwarded to `mysqldump
 **IMPORTANT**: This software is provided "as is" without warranty of any kind, express or implied. The authors and contributors are not responsible for any data loss, corruption, or other damages that may occur from using this tool.
 
 **Backup Best Practices:**
+
 - Always test your backups by performing test restores
 - Verify backup integrity before deleting source data
 - Maintain multiple backup copies in different locations
