@@ -50,7 +50,7 @@ We needed flexibility and extra goodies derived from real-world everyday scenari
 ## Requirements
 
 - **Go**: Version 1.20 or higher (for building from source)
-- **mysqldump**: Installed and accessible in PATH
+- **mysqldump (or mariadb-dump)**: Installed and accessible in PATH
 - **MySQL/MariaDB**: Compatible with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+
 - **Operating Systems**: Linux, macOS, Windows (with appropriate shell)
 
