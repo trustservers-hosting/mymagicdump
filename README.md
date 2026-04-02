@@ -70,7 +70,7 @@ mymagicdump --help
 ### Using Go Install
 
 ```bash
-go install github.com/trustservers-hosting/mymagicdump@latest
+go install github.com/trustservers-hosting/mymagicdump/cmd/mymagicdump@latest
 ```
 
 ### From Source
