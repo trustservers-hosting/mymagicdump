@@ -129,7 +129,6 @@ mymagicdump [OPTIONS]
 
 - `--databases=DB1,DB2` - Comma-separated list of databases. Supports glob patterns (`*`, `?`)
 - `--all-databases` - Dump all databases
-- `--separate-dumps` - Create separate dump files for each database
 
 ### Table Filtering
 
@@ -139,6 +138,7 @@ mymagicdump [OPTIONS]
 ### Output Options
 
 - `--output=PATH` - Output directory path (default: ./) - If multiple files are produced, the compressed file is named `multiple_databases`
+- `--separate-dumps` - Create separate dump files for each database.
 - `--compression=TYPE` - Compression: `tgz`, `tbz2`, `zip`, or `none` (default: none)
 - `--remove-definers` - Remove DEFINER statements for cross-server compatibility
 

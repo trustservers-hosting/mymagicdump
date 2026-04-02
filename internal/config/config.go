@@ -48,7 +48,7 @@ type Options struct {
 	DefaultsGroupSuffix string             `long:"defaults-group-suffix" description:"Suffix to append to the default group name in the MySQL configuration file"`
 	AllDatabases        bool               `long:"all-databases" description:"Dump all databases"`
 	Databases           CommaSeparatedList `long:"databases" description:"Comma-separated list of databases to dump. Supports glob patterns (* and ?) per entry." value-name:"DATABASE1,DATABASE2"`
-	SeparateDumps       bool               `long:"separate-dumps" description:"Create separate dump files for each database provided with --databases"`
+	SeparateDumps       bool               `long:"separate-dumps" description:"Splits output into separate dump files for each database."`
 	ExcludeTables       CommaSeparatedList `long:"exclude" description:"Comma-separated list of tables to exclude. Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
 	ExcludeTablesData   CommaSeparatedList `long:"exclude-data" description:"Comma-separated list of tables to exclude data from (but keep the schema). Supports glob patterns (* and ?)." value-name:"DB1.TABLE1,DB2.TABLE2"`
 	OutputPath          string             `long:"output" default:"./" description:"Output file path" value-name:"PATH"`
@@ -91,6 +91,14 @@ func ParseArgs() (*Options, error) {
 		}
 	}
 	opts.Passthrough = pass
+
+	if !opts.ShowVersion && !opts.AllDatabases && len(opts.Databases) == 0 {
+		var outputError error
+		parser.WriteHelp(os.Stderr)
+		outputError = &flags.Error{Type: flags.ErrHelp, Message: "No databases provided. Use either --all-databases or --databases."}
+		return nil, outputError
+	}
+
 	return &opts, nil
 }
 

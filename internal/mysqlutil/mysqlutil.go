@@ -122,9 +122,9 @@ func hasGlobWildcards(s string) bool {
 // '*' -> '%', '?' -> '_', and escape existing '%' and '_' to avoid accidental matches.
 func globToLike(glob string) string {
 	// First escape '%' and '_' by replacing with escaped versions using backslash
-	// MySQL default escape character is '\\'
-	esc := strings.ReplaceAll(glob, "%", "\\%")
-	esc = strings.ReplaceAll(esc, "_", "\\_")
+	// MySQL default escape character is '\\' in string literals, so we need '\\\\' for a literal '\\'
+	esc := strings.ReplaceAll(glob, "%", "\\\\%")
+	esc = strings.ReplaceAll(esc, "_", "\\\\_")
 	// Replace glob wildcards
 	esc = strings.ReplaceAll(esc, "*", "%")
 	esc = strings.ReplaceAll(esc, "?", "_")

@@ -169,7 +169,24 @@ func (r *Runner) singleDump(mysqlDumpFlags []string, dbSize int64) error {
 	// Create a progress bar
 	var bar *progressbar.ProgressBar
 	if !r.Opts.Silent {
-		bar = progressbar.DefaultBytes(dbSize, "Dumping database...")
+		bar = progressbar.NewOptions64(
+			dbSize,
+			progressbar.OptionSetDescription("Dumping database... [elapsed: 0s - estimated total: ?]"),
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionShowBytes(true),
+			progressbar.OptionShowTotalBytes(true),
+			progressbar.OptionSetWidth(10),
+			progressbar.OptionThrottle(65*time.Millisecond),
+			progressbar.OptionShowCount(),
+			progressbar.OptionOnCompletion(func() {
+				fmt.Fprint(os.Stderr, "\n")
+			}),
+			progressbar.OptionSpinnerType(14),
+			progressbar.OptionFullWidth(),
+			progressbar.OptionSetRenderBlankState(true),
+			progressbar.OptionSetPredictTime(false),
+			progressbar.OptionSetElapsedTime(false),
+		)
 	}
 
 	// Monitor file size and update progress bar
@@ -181,6 +198,7 @@ func (r *Runner) singleDump(mysqlDumpFlags []string, dbSize int64) error {
 	elapsed := time.Since(startTime)
 	r.OutputFiles = append(r.OutputFiles, outputFilePath)
 	if bar != nil {
+		bar.Describe(fmt.Sprintf("Dumping database... [elapsed: %s]", elapsed.Truncate(time.Second)))
 		bar.Finish()
 	}
 	logging.Info("Dump completed successfully in %s", elapsed)
@@ -224,6 +242,19 @@ func (r *Runner) monitorDump(done <-chan error, outputFilePath string, bar *prog
 			if bar != nil {
 				if fi, err := os.Stat(outputFilePath); err == nil {
 					bar.Set64(fi.Size())
+					
+					state := bar.State()
+					elapsed := time.Duration(state.SecondsSince * float64(time.Second)).Truncate(time.Second)
+					if state.CurrentPercent >= 1.0 {
+						bar.Describe(fmt.Sprintf("Dumping database... [elapsed: %s]", elapsed))
+					} else {
+						est := time.Duration(state.SecondsLeft * float64(time.Second)).Truncate(time.Second)
+						if state.SecondsLeft > 0 {
+							bar.Describe(fmt.Sprintf("Dumping database... [elapsed: %s - estimated total: %s]", elapsed, est))
+						} else {
+							bar.Describe(fmt.Sprintf("Dumping database... [elapsed: %s - estimated total: ?]", elapsed))
+						}
+					}
 				}
 			}
 			time.Sleep(time.Second)
