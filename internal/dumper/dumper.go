@@ -54,6 +54,16 @@ func NewRunner(opts *config.Options) *Runner {
 
 func (r *Runner) Prepare() error {
 	r.ConnFlags = mysqlutil.BuildConnectionFlags(*r.Opts)
+	if r.Opts.AllDatabases && r.Opts.SeparateDumps {
+		databases, err := mysqlutil.ListDatabases(r.ConnFlags)
+		if err != nil {
+			return err
+		}
+		if len(databases) == 0 {
+			return fmt.Errorf("no databases available for separate dumps")
+		}
+		r.Opts.Databases = databases
+	}
 	// Expand potential glob patterns in database list unless dumping all databases
 	if !r.Opts.AllDatabases && len(r.Opts.Databases) > 0 {
 		expanded, err := mysqlutil.ExpandDatabaseList(r.ConnFlags, r.Opts.Databases)
@@ -242,7 +252,7 @@ func (r *Runner) monitorDump(done <-chan error, outputFilePath string, bar *prog
 			if bar != nil {
 				if fi, err := os.Stat(outputFilePath); err == nil {
 					bar.Set64(fi.Size())
-					
+
 					state := bar.State()
 					elapsed := time.Duration(state.SecondsSince * float64(time.Second)).Truncate(time.Second)
 					if state.CurrentPercent >= 1.0 {
@@ -296,8 +306,11 @@ func buildDumpFlags(opts config.Options, excludedTables, excludedTablesData []st
 	for _, table := range excludedTables {
 		baseArgs = append(baseArgs, "--ignore-table="+table)
 	}
-	if opts.AllDatabases {
+	if opts.AllDatabases && !opts.SeparateDumps {
 		baseArgs = append(baseArgs, "--all-databases")
+	} else if opts.AllDatabases && opts.SeparateDumps {
+		// Each command must dump only its selected database, including CREATE/USE.
+		baseArgs = append(baseArgs, "--databases")
 	} else if !opts.SeparateDumps {
 		baseArgs = append(baseArgs, "--databases")
 		baseArgs = append(baseArgs, opts.Databases...)

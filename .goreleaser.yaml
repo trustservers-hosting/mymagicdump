@@ -1,8 +1,9 @@
 version: 2
 
-gitea_urls:
-  api: https://git.trustservers.gr/api/v1
-  download: https://git.trustservers.gr
+release:
+  github:
+    owner: trustservers-hosting
+    name: mymagicdump
 
 before:
   hooks:

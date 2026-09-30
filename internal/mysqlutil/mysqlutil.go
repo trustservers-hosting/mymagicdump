@@ -24,6 +24,7 @@
 package mysqlutil
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +33,30 @@ import (
 	"github.com/trustservers-hosting/mymagicdump/internal/config"
 	"github.com/trustservers-hosting/mymagicdump/internal/logging"
 )
+
+// ListDatabases discovers databases using the supplied connection settings.
+// The virtual information_schema and performance_schema databases are omitted,
+// matching the schemas skipped by mysqldump's --all-databases option.
+func ListDatabases(mysqlConnFlags []string) ([]string, error) {
+	args := append([]string{}, mysqlConnFlags...)
+	args = append(args, "-sNe", "SHOW DATABASES;")
+	cmd := exec.Command("mysql", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w; %s", err, strings.TrimSpace(stderr.String()))
+	}
+	var databases []string
+	for _, line := range strings.Split(string(output), "\n") {
+		database := strings.TrimSpace(line)
+		if database == "" || database == "information_schema" || database == "performance_schema" {
+			continue
+		}
+		databases = append(databases, database)
+	}
+	return databases, nil
+}
 
 // buildConnectionFlags creates the flags for connecting to the MySQL instance.
 func BuildConnectionFlags(opts config.Options) []string {

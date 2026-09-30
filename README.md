@@ -105,7 +105,7 @@ mymagicdump \
   --compression=tgz
 ```
 
-This creates a separate compressed backup file per database in `/backups/`.
+This discovers databases using the supplied connection settings and creates a separate SQL dump per database. With `--compression=tgz`, the dumps are packed into `/backups/multiple_databases.tar.gz` (a single database uses `<database>.sql.tar.gz`). The virtual `information_schema` and `performance_schema` databases are skipped. Discovery requires the `mysql` client in PATH; connection errors or an empty database list stop the backup with an error.
 
 **Security Note**: Avoid passing passwords via `--password` in production. Use `--defaults-file` instead to keep credentials secure.
 
