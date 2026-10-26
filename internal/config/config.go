@@ -24,6 +24,8 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +37,9 @@ type CommaSeparatedList []string
 
 func (d *CommaSeparatedList) UnmarshalFlag(value string) error {
 	*d = strings.Split(value, ",")
+	for i := range *d {
+		(*d)[i] = strings.TrimSpace((*d)[i])
+	}
 	return nil
 }
 
@@ -44,7 +49,7 @@ type Options struct {
 	Host                string             `short:"h" long:"host" description:"MySQL host address" value-name:"HOST"`
 	Port                string             `short:"P" long:"port" description:"MySQL port" value-name:"PORT"`
 	Socket              string             `short:"s" long:"socket" description:"Path to MySQL socket" value-name:"SOCKET"`
-	DefaultsFile        string             `long:"defaults-file" default:"~/.my.cnf" description:"Path to MySQL defaults file" value-name:"FILE"`
+	DefaultsFile        string             `long:"defaults-file" description:"Read MySQL options from this file (default: ~/.my.cnf when no connection options are supplied)" value-name:"FILE"`
 	DefaultsGroupSuffix string             `long:"defaults-group-suffix" description:"Suffix to append to the default group name in the MySQL configuration file"`
 	AllDatabases        bool               `long:"all-databases" description:"Dump all databases"`
 	Databases           CommaSeparatedList `long:"databases" description:"Comma-separated list of databases to dump. Supports glob patterns (* and ?) per entry." value-name:"DATABASE1,DATABASE2"`
@@ -55,7 +60,7 @@ type Options struct {
 	Compression         string             `long:"compression" default:"none" description:"Compression type (tgz, tbz2, zip, none)" choice:"tgz" choice:"tbz2" choice:"zip" choice:"none"`
 	DryRun              bool               `long:"dry-run" description:"Simulate the dump process"`
 	RemoveDefiners      bool               `long:"remove-definers" description:"Remove definer statements"`
-	Retries             int                `long:"retries" default:"3" description:"Number of retries on failure" value-name:"NUM_RETRIES"`
+	Retries             int                `long:"retries" default:"3" description:"Number of retries after the initial attempt (0: none, -1: unlimited)" value-name:"NUM_RETRIES"`
 	RetryInterval       int                `long:"retry-interval" default:"30" description:"Seconds between retries" value-name:"SECONDS"`
 	NotifyEmail         string             `long:"notify" description:"Email to send notifications" value-name:"EMAIL_ADDRESS"`
 	Silent              bool               `short:"q" long:"silent" description:"Only print errors to stderr"`
@@ -68,10 +73,21 @@ type Options struct {
 func ParseArgs() (*Options, error) {
 	var opts Options
 	// Ignore unknown flags so we can forward them to mysqldump
-	parser := flags.NewParser(&opts, flags.Default|flags.IgnoreUnknown)
+	// Reserve -h for the MySQL host; the built-in help flag also claims -h.
+	parser := flags.NewParser(&opts, (flags.Default&^flags.HelpFlag)|flags.IgnoreUnknown)
 	parser.Name = "mymagicdump"
 	parser.ShortDescription = "TrustServers MySQL backup tool using mysqldump with exclusions, retries and compression."
 	parser.LongDescription = "A fast, scriptable MySQL backup tool built on mysqldump. Supports multiple databases, table/data exclusions, compression (tgz/zip), retries, and optional DEFINER removal."
+	_, err := parser.AddGroup("Help Options", "", &struct {
+		ShowHelp func() error `long:"help" description:"Show this help message"`
+	}{ShowHelp: func() error {
+		var help bytes.Buffer
+		parser.WriteHelp(&help)
+		return &flags.Error{Type: flags.ErrHelp, Message: help.String()}
+	}})
+	if err != nil {
+		return nil, err
+	}
 	// Parse and capture leftover args (unknown flags/positional)
 	rest, err := parser.Parse()
 	if err != nil {
@@ -83,6 +99,9 @@ func ParseArgs() (*Options, error) {
 	for i := 0; i < len(rest); i++ {
 		tok := rest[i]
 		if strings.HasPrefix(tok, "-") { // looks like a flag
+			if err := validateOutputOption(tok); err != nil {
+				return nil, err
+			}
 			pass = append(pass, tok)
 			if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
 				pass = append(pass, rest[i+1])
@@ -91,15 +110,38 @@ func ParseArgs() (*Options, error) {
 		}
 	}
 	opts.Passthrough = pass
+	if opts.Retries < -1 {
+		return nil, fmt.Errorf("--retries must be -1 (unlimited) or greater")
+	}
+	if opts.RetryInterval < 0 {
+		return nil, fmt.Errorf("--retry-interval must be non-negative")
+	}
 
 	if !opts.ShowVersion && !opts.AllDatabases && len(opts.Databases) == 0 {
 		var outputError error
 		parser.WriteHelp(os.Stderr)
-		outputError = &flags.Error{Type: flags.ErrHelp, Message: "No databases provided. Use either --all-databases or --databases."}
+		outputError = &flags.Error{Type: flags.ErrRequired, Message: "No databases provided. Use either --all-databases or --databases."}
 		return nil, outputError
 	}
 
 	return &opts, nil
+}
+
+// The wrapper owns stdout, dump filenames, and compression. Options that make
+// the dump client write elsewhere would leave its managed backup empty.
+func validateOutputOption(arg string) error {
+	option, _, _ := strings.Cut(arg, "=")
+	blocked := strings.HasPrefix(arg, "-r") || strings.HasPrefix(arg, "-T")
+	if strings.HasPrefix(option, "--") {
+		name := strings.ReplaceAll(strings.TrimPrefix(option, "--"), "_", "-")
+		name = strings.TrimPrefix(name, "loose-")
+		// MySQL clients also accept unambiguous long-option abbreviations.
+		blocked = name != "" && (strings.HasPrefix("result-file", name) || strings.HasPrefix("tab", name))
+	}
+	if blocked {
+		return fmt.Errorf("%s redirects mysqldump output and is incompatible with mymagicdump; use --output to choose the backup directory", option)
+	}
+	return nil
 }
 
 // Expands a leading ~ to the user's home directory

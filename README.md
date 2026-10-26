@@ -50,7 +50,7 @@ We needed flexibility and extra goodies derived from real-world everyday scenari
 ## Requirements
 
 - **Go**: Version 1.20 or higher (for building from source)
-- **mysqldump (or mariadb-dump)**: Installed and accessible in PATH
+- **mariadb-dump (or mysqldump)**: Installed and accessible in PATH; `mariadb-dump` is preferred when both are available
 - **MySQL/MariaDB**: Compatible with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+
 - **Operating Systems**: Linux, macOS, Windows (with appropriate shell)
 
@@ -105,7 +105,7 @@ mymagicdump \
   --compression=tgz
 ```
 
-This discovers databases using the supplied connection settings and creates a separate SQL dump per database. With `--compression=tgz`, the dumps are packed into `/backups/multiple_databases.tar.gz` (a single database uses `<database>.sql.tar.gz`). The virtual `information_schema` and `performance_schema` databases are skipped. Discovery requires the `mysql` client in PATH; connection errors or an empty database list stop the backup with an error.
+This discovers databases using the supplied connection settings and creates a separate SQL dump per database. With `--compression=tgz`, the dumps are packed into `/backups/multiple_databases.tar.gz` (a single database uses `<database>.sql.tar.gz`). The `information_schema`, `performance_schema`, and `sys` schemas are skipped. Discovery requires the `mysql` client in PATH; connection errors or an empty database list stop the backup with an error.
 
 **Security Note**: Avoid passing passwords via `--password` in production. Use `--defaults-file` instead to keep credentials secure.
 
@@ -130,6 +130,8 @@ mymagicdump [OPTIONS]
 - `--databases=DB1,DB2` - Comma-separated list of databases. Supports glob patterns (`*`, `?`)
 - `--all-databases` - Dump all databases
 
+Database glob patterns skip `information_schema`, `performance_schema`, and `sys`, matching discovery with `--all-databases --separate-dumps`. These schemas can still be selected by naming them explicitly with `--databases`.
+
 ### Table Filtering
 
 - `--exclude=DB1.TABLE1,DB2.TABLE2` - Exclude tables completely. Supports patterns like `logs.app_log_*`
@@ -142,17 +144,21 @@ mymagicdump [OPTIONS]
 - `--compression=TYPE` - Compression: `tgz`, `tbz2`, `zip`, or `none` (default: none)
 - `--remove-definers` - Remove DEFINER statements for cross-server compatibility
 
+SQL dumps are written to `NAME.sql.partial` and renamed to `NAME.sql` only after the complete dump is successfully written and closed. Combined schema/data dumps (`--exclude-data` without `--separate-dumps`) keep the partial name until both passes succeed. Failed or interrupted dumps remain marked `.partial`; an existing completed `.sql` is replaced only on success.
+
 ### Execution Control
 
 - `--dry-run` - Simulate without executing real mysqldump
-- `--retries=NUM` - Number of retries on failure (default: 3)
+- `--retries=NUM` - Number of retries after the initial attempt (default: 3). `0` makes one attempt with no retries; `1` allows two attempts total; `-1` retries until successful. Values below `-1` are invalid.
 - `--retry-interval=SECONDS` - Seconds between retries (default: 30)
 - `-q, --silent` - Only print errors to stderr
 - `-v, --verbose` - Enable verbose (debug) logging
 
+On Linux and macOS, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the backup and terminate the active MySQL client process group, including its children. Cancellation stops retries immediately, including during the retry interval. Interrupted SQL dumps retain their `.partial` suffix and the program exits with a nonzero status.
+
 ### Forwarding Additional Flags to mysqldump
 
-Any unrecognized flags are forwarded directly to mysqldump. This allows you to use standard mysqldump options like:
+Unrecognized flags are forwarded directly to mysqldump, except output-redirection options. This allows you to use standard mysqldump options like:
 
 - `--no-tablespaces` - Disable tablespace handling
 - `--single-transaction` - Use consistent snapshot
@@ -266,7 +272,7 @@ mymagicdump \
   --output=/backups/
 ```
 
-Any additional flags not recognized by `mymagicdump` are forwarded to `mysqldump` unchanged. In this example, `--single-transaction` and `--where` flags are passed through.
+Additional flags are forwarded to `mysqldump` unchanged, except the output-redirection options. In this example, `--single-transaction` and `--where` flags are passed through.
 
 ## Disclaimer
 

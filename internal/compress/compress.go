@@ -27,6 +27,8 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -36,157 +38,127 @@ import (
 	"github.com/dsnet/compress/bzip2"
 )
 
-func ApplyCompression(outputPrefix string, compressionType string, files []string) {
+// ApplyCompression removes source dumps only after the complete archive is closed.
+func ApplyCompression(outputPrefix string, compressionType string, files []string) error {
 	if len(files) == 0 {
 		logging.Info("No dump files produced; skipping compression.")
-		return
+		return nil
 	}
+
+	var extension string
 	switch compressionType {
 	case "tgz":
-		compressTgz(outputPrefix, files)
+		extension = ".tar.gz"
 	case "tbz2":
-		compressTbz2(outputPrefix, files)
+		extension = ".tar.bz2"
 	case "zip":
-		compressZip(outputPrefix, files)
+		extension = ".zip"
 	case "none":
-		return
+		return nil
 	default:
-		logging.Error("Unsupported compression type: %s. Skipping compression.", compressionType)
+		return fmt.Errorf("unsupported compression type: %s", compressionType)
 	}
-}
 
-func compressTgz(outputPrefix string, files []string) {
-	logging.Info("Starting tar.gz compression for: %s", outputPrefix)
-	out, err := os.Create(outputPrefix + ".tar.gz")
-	if err != nil {
-		logging.Error("Failed to create tar.gz file: %v", err)
-		return
+	archivePath := outputPrefix + extension
+	logging.Info("Starting %s compression for: %s", extension[1:], outputPrefix)
+	if err := writeArchive(archivePath, compressionType, files); err != nil {
+		return fmt.Errorf("compression failed for %s: %w", archivePath, err)
 	}
-	defer out.Close()
-	gz := gzip.NewWriter(out)
-	defer gz.Close()
-	tarw := tar.NewWriter(gz)
-	defer tarw.Close()
 	for _, f := range files {
-		fh, err := os.Open(f)
-		if err != nil {
-			logging.Error("Cannot open %s for compression: %v", f, err)
-			continue
-		}
-		fi, err := fh.Stat()
-		if err != nil {
-			logging.Error("Stat %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		hdr, err := tar.FileInfoHeader(fi, fi.Name())
-		if err != nil {
-			logging.Error("Header for %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		if err := tarw.WriteHeader(hdr); err != nil {
-			logging.Error("Write header for %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		if _, err := io.Copy(tarw, fh); err != nil {
-			logging.Error("Copy %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		fh.Close()
 		if err := os.Remove(f); err != nil {
 			logging.Warn("Failed to delete original %s after compression: %v", f, err)
 		}
 	}
-	logging.Info("tar.gz compression completed successfully.")
+	logging.Info("%s compression completed successfully.", extension[1:])
+	return nil
 }
 
-func compressZip(outputPrefix string, files []string) {
-	logging.Info("Starting zip compression for: %s", outputPrefix)
-	out, err := os.Create(outputPrefix + ".zip")
+func writeArchive(path, compressionType string, files []string) (err error) {
+	out, err := os.Create(path)
 	if err != nil {
-		logging.Error("Failed to create zip file: %v", err)
-		return
+		return fmt.Errorf("create archive: %w", err)
 	}
-	defer out.Close()
-	zw := zip.NewWriter(out)
-	defer zw.Close()
+	// Close from the archive writer outward, checking errors from buffered data
+	// and archive trailers as well as from copying the source files.
+	var writers []io.Closer
+	defer func() {
+		for i := len(writers) - 1; i >= 0; i-- {
+			if closeErr := writers[i].Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("finalize archive: %w", closeErr))
+			}
+		}
+		if err == nil {
+			if syncErr := out.Sync(); syncErr != nil {
+				err = fmt.Errorf("sync archive: %w", syncErr)
+			}
+		}
+		if closeErr := out.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close archive: %w", closeErr))
+		}
+		if err != nil {
+			if removeErr := os.Remove(path); removeErr != nil {
+				err = errors.Join(err, fmt.Errorf("remove incomplete archive: %w", removeErr))
+			}
+		}
+	}()
+
+	var addFile func(string) error
+	if compressionType == "zip" {
+		zw := zip.NewWriter(out)
+		writers = append(writers, zw)
+		addFile = func(path string) error {
+			return copyArchiveFile(path, func(_ os.FileInfo) (io.Writer, error) {
+				return zw.Create(filepath.Base(path))
+			})
+		}
+	} else {
+		var compressed io.WriteCloser
+		if compressionType == "tgz" {
+			compressed = gzip.NewWriter(out)
+		} else {
+			compressed, err = bzip2.NewWriter(out, &bzip2.WriterConfig{Level: bzip2.BestCompression})
+			if err != nil {
+				return fmt.Errorf("initialize bzip2 writer: %w", err)
+			}
+		}
+		writers = append(writers, compressed)
+		tarw := tar.NewWriter(compressed)
+		writers = append(writers, tarw)
+		addFile = func(path string) error {
+			return copyArchiveFile(path, func(fi os.FileInfo) (io.Writer, error) {
+				hdr, err := tar.FileInfoHeader(fi, fi.Name())
+				if err != nil {
+					return nil, err
+				}
+				if err := tarw.WriteHeader(hdr); err != nil {
+					return nil, err
+				}
+				return tarw, nil
+			})
+		}
+	}
 	for _, f := range files {
-		base := filepath.Base(f)
-		fh, err := os.Open(f)
-		if err != nil {
-			logging.Error("Cannot open %s for zip: %v", f, err)
-			continue
-		}
-		w, err := zw.Create(base)
-		if err != nil {
-			logging.Error("Create zip entry %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		if _, err := io.Copy(w, fh); err != nil {
-			logging.Error("Copy %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		fh.Close()
-		if err := os.Remove(f); err != nil {
-			logging.Warn("Failed to delete original %s after compression: %v", f, err)
+		if err := addFile(f); err != nil {
+			return fmt.Errorf("archive %s: %w", f, err)
 		}
 	}
-	logging.Info("Zip compression completed successfully.")
+	return nil
 }
 
-func compressTbz2(outputPrefix string, files []string) {
-	logging.Info("Starting tar.bz2 compression for: %s", outputPrefix)
-	out, err := os.Create(outputPrefix + ".tar.bz2")
+func copyArchiveFile(path string, entry func(os.FileInfo) (io.Writer, error)) (err error) {
+	fh, err := os.Open(path)
 	if err != nil {
-		logging.Error("Failed to create tar.bz2 file: %v", err)
-		return
+		return err
 	}
-	defer out.Close()
-	bz, err := bzip2.NewWriter(out, &bzip2.WriterConfig{Level: bzip2.BestCompression})
+	defer func() { err = errors.Join(err, fh.Close()) }()
+	fi, err := fh.Stat()
 	if err != nil {
-		logging.Error("Failed to init bzip2 writer: %v", err)
-		return
+		return err
 	}
-	defer bz.Close()
-	tarw := tar.NewWriter(bz)
-	defer tarw.Close()
-	for _, f := range files {
-		fh, err := os.Open(f)
-		if err != nil {
-			logging.Error("Cannot open %s for compression: %v", f, err)
-			continue
-		}
-		fi, err := fh.Stat()
-		if err != nil {
-			logging.Error("Stat %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		hdr, err := tar.FileInfoHeader(fi, fi.Name())
-		if err != nil {
-			logging.Error("Header for %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		if err := tarw.WriteHeader(hdr); err != nil {
-			logging.Error("Write header for %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		if _, err := io.Copy(tarw, fh); err != nil {
-			logging.Error("Copy %s failed: %v", f, err)
-			fh.Close()
-			continue
-		}
-		fh.Close()
-		if err := os.Remove(f); err != nil {
-			logging.Warn("Failed to delete original %s after compression: %v", f, err)
-		}
+	w, err := entry(fi)
+	if err != nil {
+		return err
 	}
-	logging.Info("tar.bz2 compression completed successfully.")
+	_, err = io.Copy(w, fh)
+	return err
 }

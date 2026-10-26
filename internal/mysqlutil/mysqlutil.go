@@ -25,32 +25,36 @@ package mysqlutil
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/trustservers-hosting/mymagicdump/internal/config"
 	"github.com/trustservers-hosting/mymagicdump/internal/logging"
+	"github.com/trustservers-hosting/mymagicdump/internal/process"
 )
 
+// CheckConnection verifies that the client can authenticate before backup preparation.
+func CheckConnection(ctx context.Context, mysqlConnFlags []string) error {
+	if _, err := queryMySQL(ctx, mysqlConnFlags, "SELECT 1;"); err != nil {
+		return fmt.Errorf("connection check failed: %w", err)
+	}
+	return nil
+}
+
 // ListDatabases discovers databases using the supplied connection settings.
-// The virtual information_schema and performance_schema databases are omitted,
+// The information_schema, performance_schema, and sys schemas are omitted,
 // matching the schemas skipped by mysqldump's --all-databases option.
-func ListDatabases(mysqlConnFlags []string) ([]string, error) {
-	args := append([]string{}, mysqlConnFlags...)
-	args = append(args, "-sNe", "SHOW DATABASES;")
-	cmd := exec.Command("mysql", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	output, err := cmd.Output()
+func ListDatabases(ctx context.Context, mysqlConnFlags []string) ([]string, error) {
+	output, err := queryMySQL(ctx, mysqlConnFlags, "SHOW DATABASES;")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list databases: %w; %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("failed to list databases: %w", err)
 	}
 	var databases []string
 	for _, line := range strings.Split(string(output), "\n") {
 		database := strings.TrimSpace(line)
-		if database == "" || database == "information_schema" || database == "performance_schema" {
+		if database == "" || isDefaultExcludedSchema(database) {
 			continue
 		}
 		databases = append(databases, database)
@@ -58,9 +62,44 @@ func ListDatabases(mysqlConnFlags []string) ([]string, error) {
 	return databases, nil
 }
 
-// buildConnectionFlags creates the flags for connecting to the MySQL instance.
+// queryMySQL keeps client diagnostics out of query results, while preserving
+// stderr in errors when the client fails.
+func queryMySQL(ctx context.Context, mysqlConnFlags []string, query string) ([]byte, error) {
+	args := append([]string{}, mysqlConnFlags...)
+	args = append(args, "-sNe", query)
+	cmd := process.CommandContext(ctx, "mysql", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("command failed: %w; %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return output, nil
+}
+
+func isDefaultExcludedSchema(database string) bool {
+	return database == "information_schema" || database == "performance_schema" || database == "sys"
+}
+
+// BuildConnectionFlags creates the flags for connecting to the MySQL instance.
 func BuildConnectionFlags(opts config.Options) []string {
-	args := []string{}
+	args := []string{"--no-defaults"}
+	defaultsFile := opts.DefaultsFile
+	if defaultsFile == "" && opts.User == "" && opts.Password == "" && opts.Host == "" && opts.Port == "" && opts.Socket == "" {
+		defaultsFile = "~/.my.cnf"
+	}
+	// MySQL option-file flags must precede ordinary connection options.
+	if defaultsFile != "" {
+		expanded := config.ExpandTilde(defaultsFile)
+		if _, err := os.Stat(expanded); err == nil {
+			args = []string{"--defaults-file=" + expanded}
+			if opts.DefaultsGroupSuffix != "" {
+				args = append(args, "--defaults-group-suffix="+opts.DefaultsGroupSuffix)
+			}
+		} else {
+			logging.Info("Skipping --defaults-file: %s not found", expanded)
+		}
+	}
 	if opts.User != "" {
 		args = append(args, "-u", opts.User)
 	}
@@ -76,26 +115,15 @@ func BuildConnectionFlags(opts config.Options) []string {
 	if opts.Socket != "" {
 		args = append(args, "--socket", opts.Socket)
 	}
-	if opts.DefaultsFile != "" {
-		expanded := config.ExpandTilde(opts.DefaultsFile)
-		if _, err := os.Stat(expanded); err == nil {
-			args = append(args, "--defaults-file="+expanded)
-			if opts.DefaultsGroupSuffix != "" {
-				args = append(args, "--defaults-group-suffix="+opts.DefaultsGroupSuffix)
-			}
-		} else {
-			logging.Info("Skipping --defaults-file: %s not found", expanded)
-		}
-	}
 	return args
 }
 
-func GetTablesMatchingGlob(mysqlConnFlags []string, dbName, globPattern string) ([]string, error) {
+func GetTablesMatchingGlob(ctx context.Context, mysqlConnFlags []string, dbName, globPattern string) ([]string, error) {
 	likePattern := globToLike(globPattern)
-	cmd := exec.Command("mysql", append(mysqlConnFlags, "-sNe", fmt.Sprintf("SHOW TABLES IN %s LIKE '%s';", dbName, likePattern))...)
-	output, err := cmd.CombinedOutput()
+	quotedDBName := "`" + strings.ReplaceAll(dbName, "`", "``") + "`"
+	output, err := queryMySQL(ctx, mysqlConnFlags, fmt.Sprintf("SHOW TABLES IN %s LIKE '%s';", quotedDBName, likePattern))
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %v, output: %s", err, string(output))
+		return nil, err
 	}
 	lines := strings.Split(string(output), "\n")
 	var tables []string
@@ -110,18 +138,22 @@ func GetTablesMatchingGlob(mysqlConnFlags []string, dbName, globPattern string) 
 // ExpandDatabaseList expands shell-like patterns in the provided database list.
 // Supports '*' and '?' wildcards. If an entry contains wildcards, it is resolved
 // against MySQL via SHOW DATABASES LIKE ... Otherwise the name is used as-is.
-func ExpandDatabaseList(mysqlConnFlags []string, entries []string) ([]string, error) {
+// Wildcard matches omit the same default-excluded schemas as ListDatabases; explicit
+// database names are preserved.
+func ExpandDatabaseList(ctx context.Context, mysqlConnFlags []string, entries []string) ([]string, error) {
 	var out []string
 	for _, e := range entries {
 		if hasGlobWildcards(e) {
 			likePattern := globToLike(e)
-			matched, err := resolveDBLike(mysqlConnFlags, likePattern)
+			matched, err := resolveDBLike(ctx, mysqlConnFlags, likePattern)
 			if err != nil {
-				// Log and continue with next entry
-				logging.Warn("Failed resolving databases for pattern %q: %v", e, err)
-				continue
+				return nil, fmt.Errorf("resolve databases for pattern %q: %w", e, err)
 			}
-			out = append(out, matched...)
+			for _, database := range matched {
+				if !isDefaultExcludedSchema(database) {
+					out = append(out, database)
+				}
+			}
 		} else {
 			out = append(out, e)
 		}
@@ -156,12 +188,11 @@ func globToLike(glob string) string {
 	return esc
 }
 
-func resolveDBLike(mysqlConnFlags []string, likePattern string) ([]string, error) {
+func resolveDBLike(ctx context.Context, mysqlConnFlags []string, likePattern string) ([]string, error) {
 	query := fmt.Sprintf("SHOW DATABASES LIKE '%s';", likePattern)
-	cmd := exec.Command("mysql", append(mysqlConnFlags, "-sNe", query)...)
-	output, err := cmd.CombinedOutput()
+	output, err := queryMySQL(ctx, mysqlConnFlags, query)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %v, output: %s", err, string(output))
+		return nil, err
 	}
 	lines := strings.Split(string(output), "\n")
 	var dbs []string
@@ -173,11 +204,14 @@ func resolveDBLike(mysqlConnFlags []string, likePattern string) ([]string, error
 	return dbs, nil
 }
 
-func ExtractDatabasesFromFlags(mysqlDumpFlags []string) []string {
+func ExtractDatabasesFromFlags(ctx context.Context, mysqlDumpFlags []string) []string {
 	for _, flag := range mysqlDumpFlags {
 		if flag == "--all-databases" {
-			cmd := exec.Command("mysql", "-sNe", "SHOW DATABASES;")
-			output, _ := cmd.CombinedOutput()
+			output, err := queryMySQL(ctx, nil, "SHOW DATABASES;")
+			if err != nil {
+				logging.Warn("Failed to list databases: %v", err)
+				return nil
+			}
 			all := strings.Split(string(output), "\n")
 			if len(all) > 0 {
 				all = all[:len(all)-1]
@@ -202,14 +236,13 @@ func ExtractDatabasesFromFlags(mysqlDumpFlags []string) []string {
 	return nil
 }
 
-func CalculateDatabaseSize(mysqlConnFlags []string, targetDatabases []string) (int, error) {
+func CalculateDatabaseSize(ctx context.Context, mysqlConnFlags []string, targetDatabases []string) (int, error) {
 	query := `
         SELECT ROUND(SUM(data_length + index_length), 0)
         FROM information_schema.TABLES
         WHERE table_schema IN ('` + strings.Join(targetDatabases, "', '") + `')
     `
-	cmd := exec.Command("mysql", append(mysqlConnFlags, []string{"-sNe", query}...)...)
-	output, err := cmd.Output()
+	output, err := queryMySQL(ctx, mysqlConnFlags, query)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute query: %w", err)
 	}
