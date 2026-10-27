@@ -64,7 +64,11 @@ func (r *Runner) Prepare() error {
 	if err := r.ctx.Err(); err != nil {
 		return err
 	}
-	r.ConnFlags = mysqlutil.BuildConnectionFlags(*r.Opts)
+	connFlags, err := mysqlutil.BuildConnectionFlags(*r.Opts)
+	if err != nil {
+		return err
+	}
+	r.ConnFlags = connFlags
 	if err := mysqlutil.CheckConnection(r.ctx, r.ConnFlags); err != nil {
 		return err
 	}
@@ -519,8 +523,10 @@ func constructExcludedTables(ctx context.Context, connFlags []string, patternsLi
 func (r *Runner) removeDefiners() error {
 	// Match complete user@host accounts. Backtick-quoted parts may contain
 	// whitespace, @ characters, and backticks escaped by doubling them.
+	// Trailing whitespace is optional because mysqldump may put */ directly
+	// after the account in trigger and event definitions.
 	accountPart := "(?:`(?:``|[^`])*`|[^\\s`@]+)"
-	definerRe := regexp.MustCompile(`DEFINER=` + accountPart + `@` + accountPart + `\s+`)
+	definerRe := regexp.MustCompile(`DEFINER=` + accountPart + `@` + accountPart + `\s*`)
 	for _, dumpFile := range r.OutputFiles {
 		// Read entire file
 		data, err := os.ReadFile(dumpFile)

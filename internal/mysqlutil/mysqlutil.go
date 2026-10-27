@@ -82,7 +82,7 @@ func isDefaultExcludedSchema(database string) bool {
 }
 
 // BuildConnectionFlags creates the flags for connecting to the MySQL instance.
-func BuildConnectionFlags(opts config.Options) []string {
+func BuildConnectionFlags(opts config.Options) ([]string, error) {
 	args := []string{"--no-defaults"}
 	defaultsFile := opts.DefaultsFile
 	if defaultsFile == "" && opts.User == "" && opts.Password == "" && opts.Host == "" && opts.Port == "" && opts.Socket == "" {
@@ -97,6 +97,9 @@ func BuildConnectionFlags(opts config.Options) []string {
 				args = append(args, "--defaults-group-suffix="+opts.DefaultsGroupSuffix)
 			}
 		} else {
+			if opts.DefaultsFile != "" {
+				return nil, fmt.Errorf("cannot access --defaults-file %q: %w", expanded, err)
+			}
 			logging.Info("Skipping --defaults-file: %s not found", expanded)
 		}
 	}
@@ -115,7 +118,7 @@ func BuildConnectionFlags(opts config.Options) []string {
 	if opts.Socket != "" {
 		args = append(args, "--socket", opts.Socket)
 	}
-	return args
+	return args, nil
 }
 
 func GetTablesMatchingGlob(ctx context.Context, mysqlConnFlags []string, dbName, globPattern string) ([]string, error) {

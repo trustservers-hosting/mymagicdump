@@ -93,6 +93,9 @@ func ParseArgs() (*Options, error) {
 	if err != nil {
 		return nil, err
 	}
+	if parser.FindOptionByLongName("defaults-file").IsSet() && opts.DefaultsFile == "" {
+		return nil, fmt.Errorf("--defaults-file must not be empty")
+	}
 	// Collect passthrough flags: include args that look like flags and their immediate value if separated
 	// e.g., [--no-tablespaces, --where, "user='bob'"] -> pass both tokens for --where
 	var pass []string
